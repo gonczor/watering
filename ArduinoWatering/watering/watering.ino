@@ -113,6 +113,27 @@ void sendState(){
   }
 }
 
+void read_setup(String stringMessage){
+  char *ptr;
+  radio.stopListening();
+  
+  char num[4] = {stringMessage[7], stringMessage[8], stringMessage[9], stringMessage[10]};
+  pump_on_delay = strtoul(num, &ptr, 10);
+  
+  num[0] = stringMessage[11];
+  num[1] = stringMessage[12];
+  num[2] = stringMessage[13];
+  num[3] = stringMessage[14];
+  pump_inactive_delay = strtoul(num, &ptr, 10);
+  
+  Serial.print("Pump on delay: ");
+  Serial.println(pump_on_delay);
+  Serial.print("Pump inactive delay: ");
+  Serial.println(pump_inactive_delay);
+  Serial.println(stringMessage);
+  delay(500);
+}
+
 void handleRadio(){
   radio.startListening();
   char receivedMessage[32] = {0};
@@ -125,24 +146,7 @@ void handleRadio(){
     }
     else {
       // confirm
-      char *ptr;
-      radio.stopListening();
-      
-      char num[4] = {stringMessage[7], stringMessage[8], stringMessage[9], stringMessage[10]};
-      pump_on_delay = strtoul(num, &ptr, 10);
-      
-      num[0] = stringMessage[11];
-      num[1] = stringMessage[12];
-      num[2] = stringMessage[13];
-      num[3] = stringMessage[14];
-      pump_inactive_delay = strtoul(num, &ptr, 10);
-      
-      Serial.print("Pump on delay: ");
-      Serial.println(pump_on_delay);
-      Serial.print("Pump inactive delay: ");
-      Serial.println(pump_inactive_delay);
-      Serial.println(stringMessage);
-      delay(500);
+      read_setup(stringMessage);
       radio.write("SETPUMP", sizeof("SETPUMP"));
     }
   }
@@ -175,13 +179,13 @@ void setup() {
 
 void loop() {
   handleRadio();
-//  read_air_conditions();
-//  read_earth_conditions();
-//
-//  print_air_data();
-//  print_earth_data();
-//
-//  handle_pump();
-//  digitalWrite(PUMP_ON, pump_on);
-//  digitalWrite(PUMP_ACTIVE, pump_active);
+  read_air_conditions();
+  read_earth_conditions();
+
+  print_air_data();
+  print_earth_data();
+
+  handle_pump();
+  digitalWrite(PUMP_ON, pump_on);
+  digitalWrite(PUMP_ACTIVE, pump_active);
 }
