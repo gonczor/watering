@@ -1,17 +1,20 @@
 #include <SimpleDHT.h>
 #include <LiquidCrystal.h>
+#include <RF24.h>
+#include <SPI.h>
 
-#define AIR_SENSOR_PIN 6
-#define EARTH_SENSOR_PIN 7
-#define PUMP_PIN 8
-#define PUMP_ACTIVE 9
-#define PUMP_ON 10
+#define AIR_SENSOR_PIN A3
+#define EARTH_SENSOR_PIN A4
+#define PUMP_PIN A0
+#define PUMP_ACTIVE A1
+#define PUMP_ON A2
 
 SimpleDHT11 air_sensor;
-LiquidCrystal lcd(12, 13, 2, 3, 4, 5);
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+RF24 radio(9, 10);
 
-const unsigned long pump_on_delay = 5000UL; //pump 5 seconds on
-const unsigned int pump_inactive_delay = 90000UL; //pump disabled for 15 minutes
+unsigned long pump_on_delay;
+unsigned long pump_inactive_delay;
 unsigned long pump_deactivation_timestamp;
 unsigned long pump_switch_on_timestamp;
 unsigned long elapsed_from_deactivation;
@@ -21,6 +24,16 @@ byte air_humidity;
 bool earth_is_humid;
 bool pump_active;
 bool pump_on;
+
+void setupRadio(){
+  radio.begin();
+  radio.setPALevel(RF24_PA_MAX);
+  radio.setChannel(0x76);
+  radio.openWritingPipe(0xF0F0F0F0E1LL);
+  radio.openReadingPipe(1, 0xE8E8F0F0E1LL);
+  radio.enableDynamicPayloads();
+  radio.powerUp();
+}
 
 void print_air_data(){
   lcd.setCursor(0, 0);
@@ -88,7 +101,61 @@ void handle_pump(){
   }
 }
 
+void sendState(){
+  radio.stopListening();
+  if(earth_is_humid){
+    char text[] = "HUMID";
+    radio.write(text, sizeof(text));
+  }
+  else{
+    char text[] = "DRY";
+    radio.write(text, sizeof(text));
+  }
+}
+
+void handleRadio(){
+  radio.startListening();
+  char receivedMessage[32] = {0};
+  if(radio.available()){
+    radio.read(receivedMessage, sizeof(receivedMessage));
+    Serial.println(receivedMessage);
+    String stringMessage(receivedMessage);
+    if (stringMessage == "GETSTATE"){
+      sendState();
+    }
+    else {
+      // confirm
+      char *ptr;
+      radio.stopListening();
+      
+      char num[4] = {stringMessage[7], stringMessage[8], stringMessage[9], stringMessage[10]};
+      pump_on_delay = strtoul(num, &ptr, 10);
+      
+      num[0] = stringMessage[11];
+      num[1] = stringMessage[12];
+      num[2] = stringMessage[13];
+      num[3] = stringMessage[14];
+      pump_inactive_delay = strtoul(num, &ptr, 10);
+      
+      Serial.print("Pump on delay: ");
+      Serial.println(pump_on_delay);
+      Serial.print("Pump inactive delay: ");
+      Serial.println(pump_inactive_delay);
+      Serial.println(stringMessage);
+      delay(500);
+      radio.write("SETPUMP", sizeof("SETPUMP"));
+    }
+  }
+  radio.startListening();
+}
+
 void setup() {
+  while(!Serial)
+    ;
+  Serial.begin(9600);
+  Serial.println("Serial ON");
+  // radio
+  setupRadio();
   // lcd
   lcd.begin(16, 2);
   // air
@@ -107,13 +174,14 @@ void setup() {
 }
 
 void loop() {
-  read_air_conditions();
-  read_earth_conditions();
-
-  print_air_data();
-  print_earth_data();
-
-  handle_pump();
-  digitalWrite(PUMP_ON, pump_on);
-  digitalWrite(PUMP_ACTIVE, pump_active);
+  handleRadio();
+//  read_air_conditions();
+//  read_earth_conditions();
+//
+//  print_air_data();
+//  print_earth_data();
+//
+//  handle_pump();
+//  digitalWrite(PUMP_ON, pump_on);
+//  digitalWrite(PUMP_ACTIVE, pump_active);
 }
